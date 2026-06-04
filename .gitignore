@@ -1,0 +1,16 @@
+﻿mentor_demo/
+mentor_demo_audit.md
+local_backups/
+_backups/
+*.bak
+.env
+*.env
+*.db
+*.sqlite
+*.sqlite3
+logs/
+outputs/
+raw_responses/
+prompt_examples/
+__pycache__/
+*.pyc

@@ -1,0 +1,61 @@
+﻿"""Fake sample inputs for the VOC subagent smoke test."""
+
+SAMPLE_REQUIREMENT = {
+    "requirement_id": "sample_requirement_001",
+    "description": "Understand user feedback about a compact home appliance.",
+}
+
+SAMPLE_RAW_EVIDENCE = [
+    {
+        "evidence_id": "fake_evidence_001",
+        "source": "reddit",
+        "source_url": "https://example.test/reddit/1",
+        "subreddit": "examplecommunity",
+        "post_id": "post_001",
+        "comment_id": None,
+        "title": "Is the appliance worth it?",
+        "body": "It is expensive, but it works well and is easy to use every morning.",
+        "created_at": "2026-01-01T00:00:00Z",
+        "fetched_at": "2026-01-02T00:00:00Z",
+        "matched_patterns": ["worth"],
+        "raw_payload": {"sample": True},
+        "task_group_id": "task_group_001",
+        "task_group_run_id": "task_group_run_001",
+    },
+    {
+        "evidence_id": "fake_evidence_002",
+        "source": "youtube",
+        "source_url": "https://example.test/youtube/1",
+        "title": "User comment",
+        "body": "I bought it after trying an alternative to my old device. The new one feels comfortable and stylish.",
+        "created_at": "2026-01-03T00:00:00Z",
+        "fetched_at": "2026-01-04T00:00:00Z",
+        "matched_patterns": ["alternative"],
+        "raw_payload": {"sample": True},
+    },
+    {
+        "evidence_id": "fake_evidence_003",
+        "source": "reddit",
+        "source_url": "https://example.test/reddit/2",
+        "subreddit": "examplecommunity",
+        "post_id": "post_002",
+        "comment_id": "comment_001",
+        "title": "",
+        "body": "I would not recommend it because the setup is confusing and the plastic feels flimsy.",
+        "created_at": "2026-01-05T00:00:00Z",
+        "fetched_at": "2026-01-06T00:00:00Z",
+        "matched_patterns": ["recommend"],
+        "raw_payload": {"sample": True},
+    },
+    {
+        "evidence_id": "fake_evidence_004",
+        "source": "forum",
+        "source_url": "https://example.test/forum/1",
+        "title": "",
+        "body": "   ",
+        "created_at": "2026-01-07T00:00:00Z",
+        "fetched_at": "2026-01-08T00:00:00Z",
+        "matched_patterns": [],
+        "raw_payload": {"sample": True},
+    },
+]
