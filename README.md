@@ -1,28 +1,104 @@
-﻿# VOC Subagent
-
-This project implements a VOC (Voice of Customer) evidence-analysis subagent.
-
-The subagent is designed to convert raw user evidence into structured VOC records, extract product evaluation, comparison, and decision signals, and preserve traceability from every extracted signal back to its supporting source text.
+﻿# VOC Evidence Subagent
 
 ## Purpose
 
-The project focuses on sample-level VOC evidence analysis. It helps organize what users say in a collected evidence sample without claiming that the sample represents the broader market.
+This project provides a callable VOC (Voice of Customer) evidence-analysis subagent. It analyzes already-collected user evidence and returns structured, sample-level VOC findings.
 
-## Core Capabilities
+## Public API
 
-- Convert raw user evidence into normalized VOC records.
-- Extract product evaluation evidence such as usability, performance, quality, fit, and price/value signals.
-- Extract comparison evidence when users explicitly compare products or alternatives.
-- Extract decision evidence such as purchase barriers, return intent, recommendation signals, or switching signals.
-- Preserve evidence spans so each structured signal remains auditable.
-- Produce sample-level findings with explicit limitations.
+```python
+from voc_subagent import run_voc_evidence_analysis
 
-## Scope Boundaries
+result = run_voc_evidence_analysis(
+    requirement={...},
+    raw_evidence_list=[...],
+    config={...},
+)
+```
 
-This project does not make market-level claims such as what consumers generally prefer or what the whole market believes. Findings should be framed as evidence observed within the analyzed sample only.
+## Scope
 
-The project also does not include new crawling, large-scale collection, production analytics, or final product insight report generation in its current form.
+The subagent does:
 
-## Safety Rules
+- map raw evidence into VOC records;
+- extract product evaluation, comparison, and decision signals;
+- preserve evidence spans;
+- preserve supporting evidence IDs;
+- aggregate evidence deterministically;
+- generate sample-level insight candidates.
 
-Do not commit environment files, databases, logs, raw responses, prompt examples, local outputs, backups, or other internal working files.
+The subagent does not:
+
+- crawl or collect new evidence;
+- call external APIs or LLMs;
+- read or write databases;
+- modify queues or research runs;
+- render dashboards;
+- make market-level conclusions.
+
+## Input Contract
+
+`requirement` is a dictionary that may include:
+
+- `requirement_id`
+- `title`
+- `description`
+
+`raw_evidence_list` is a list of dictionaries. Each item may include:
+
+- `evidence_id`
+- `title`
+- `body`
+- `source`
+- `source_url`
+- `subreddit`
+- `score`
+- `comment_count`
+- `matched_patterns`
+- `language`
+
+`config` is an optional dictionary. Supported fields include:
+
+- `target_product`
+- `competitor_terms`
+- `extraction_mode`
+- `max_records`
+- `min_evidence_threshold`
+- `min_source_threshold`
+- `language_filter`
+- `evidence_span_strict`
+
+## Output Contract
+
+The returned dictionary includes:
+
+- `voc_schema_version`
+- `analyzed_at`
+- `requirement_id`
+- `records_analyzed`
+- `sample_size`
+- `min_evidence_met`
+- `evidence_counts`
+- `top_themes`
+- `competitor_signals`
+- `decision_signals`
+- `insight_candidates`
+- `limitations`
+
+## Claim Safety
+
+Findings are sample-level only. Insight claims must start with `In this sample`.
+
+The subagent does not produce market-level claims or representative consumer conclusions. Every insight candidate must include supporting evidence IDs so the output remains traceable to the source evidence.
+
+## Testing
+
+Run the stdlib-only smoke tests with:
+
+```bash
+python -m voc_subagent.test_voc
+```
+
+## Integration Note
+
+This module is designed to be called by a larger Deep Research workflow after evidence has been collected. Integration, persistence, dashboard display, and queue behavior are owned by the parent workflow.

@@ -1,4 +1,7 @@
-﻿"""Deterministic MVP extraction rules for VOC evidence."""
+﻿"""Deprecated: replaced by voc_subagent.voc.
+
+This module is kept temporarily for historical reference and should not be used by new code.
+"""
 
 from __future__ import annotations
 
@@ -136,3 +139,5 @@ def extract_decisions(records: list[dict]) -> list[dict]:
             )
             local_index += 1
     return evidence
+
+
