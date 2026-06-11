@@ -101,6 +101,7 @@ MILD_TERMS = {"slightly", "somewhat", "a bit", "kind of", "okay"}
 
 @dataclass
 class _ProductEvaluationEvidence:
+    extraction_id: str
     evidence_id: str
     evidence_span: str
     span_validated: bool
@@ -115,6 +116,7 @@ class _ProductEvaluationEvidence:
 
 @dataclass
 class _ComparisonEvidence:
+    extraction_id: str
     evidence_id: str
     compared_product: str
     comparison_basis: str
@@ -132,6 +134,7 @@ class _ComparisonEvidence:
 
 @dataclass
 class _DecisionEvidence:
+    extraction_id: str
     evidence_id: str
     evidence_span: str
     span_validated: bool
@@ -224,7 +227,8 @@ class VOCService:
                         continue
                     seen.add(dedupe_key)
                     item = _ProductEvaluationEvidence(
-                        evidence_id=f"product_{record['content_id']}_{local_index}",
+                        extraction_id=f"product_{record['content_id']}_{local_index}",
+                        evidence_id=record["content_id"],
                         evidence_span=span,
                         span_validated=True,
                         extraction_method="rule_based",
@@ -261,7 +265,8 @@ class VOCService:
                     continue
                 seen.add(dedupe_key)
                 item = _ComparisonEvidence(
-                    evidence_id=f"comparison_{record['content_id']}_{local_index}",
+                    extraction_id=f"comparison_{record['content_id']}_{local_index}",
+                    evidence_id=record["content_id"],
                     compared_product=compared_product,
                     comparison_basis=basis,
                     preferred_option=preferred_option,
@@ -296,7 +301,8 @@ class VOCService:
                         continue
                     seen.add(dedupe_key)
                     item = _DecisionEvidence(
-                        evidence_id=f"decision_{record['content_id']}_{local_index}",
+                        extraction_id=f"decision_{record['content_id']}_{local_index}",
+                        evidence_id=record["content_id"],
                         evidence_span=span,
                         span_validated=True,
                         extraction_method="rule_based",
@@ -779,6 +785,7 @@ def _aggregate_product_evaluations(product_evidence: list[dict]) -> list[dict]:
             "evidence_count": group["count"],
             "source_count": _source_count(items),
             "sample_evidence_ids": _evidence_ids(items)[:3],
+            "sample_extraction_ids": _extraction_ids(items)[:3],
             "sample_spans": [item["evidence_span"] for item in items[:3]],
             "confidence": build_confidence(items, group_direction=direction),
         })
@@ -801,6 +808,7 @@ def _aggregate_comparisons(comparison_evidence: list[dict]) -> list[dict]:
             "evidence_count": group["count"],
             "source_count": _source_count(items),
             "sample_evidence_ids": _evidence_ids(items)[:3],
+            "sample_extraction_ids": _extraction_ids(items)[:3],
             "sample_spans": [item["evidence_span"] for item in items[:3]],
             "confidence": build_confidence(items),
         })
@@ -816,6 +824,7 @@ def _aggregate_decisions(decision_evidence: list[dict]) -> list[dict]:
             "evidence_count": group["count"],
             "source_count": _source_count(items),
             "sample_evidence_ids": _evidence_ids(items)[:3],
+            "sample_extraction_ids": _extraction_ids(items)[:3],
             "sample_spans": [item["evidence_span"] for item in items[:3]],
             "price_point_mentions": sum(1 for item in items if item.get("price_point_mentioned")),
             "confidence": build_confidence(items),
@@ -928,9 +937,7 @@ def _validate_ids(values: Any, records: list[dict], issues: list[str]) -> None:
 
 def _known_evidence_id(value: str, records: list[dict]) -> bool:
     content_ids = {str(record.get("content_id")) for record in records if record.get("content_id") is not None}
-    if value in content_ids:
-        return True
-    return any(value.startswith(f"{prefix}_{content_id}_") for content_id in content_ids for prefix in ("product", "comparison", "decision"))
+    return value in content_ids
 
 
 def _validate_spans(values: Any, records: list[dict], issues: list[str]) -> None:
@@ -987,7 +994,33 @@ def _source_count(items: list[dict]) -> int:
 
 
 def _evidence_ids(items: list[dict]) -> list[str]:
-    return [item["evidence_id"] for item in items if item.get("evidence_id")]
+    ids: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        evidence_id = item.get("evidence_id")
+        if not evidence_id:
+            continue
+        value = str(evidence_id)
+        if value in seen:
+            continue
+        ids.append(value)
+        seen.add(value)
+    return ids
+
+
+def _extraction_ids(items: list[dict]) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        extraction_id = item.get("extraction_id")
+        if not extraction_id:
+            continue
+        value = str(extraction_id)
+        if value in seen:
+            continue
+        ids.append(value)
+        seen.add(value)
+    return ids
 
 
 def _now_iso() -> str:

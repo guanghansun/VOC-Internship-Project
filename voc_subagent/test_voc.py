@@ -624,7 +624,7 @@ def test_missing_evidence_id_uses_id() -> None:
         [{"id": "source_1", "body": "It is expensive.", "source_url": "https://example.test/1"}],
         {"min_evidence_threshold": 1, "min_source_threshold": 1},
     )
-    assert result["top_themes"][0]["sample_evidence_ids"] == ["product_source_1_1"]
+    assert result["top_themes"][0]["sample_evidence_ids"] == ["source_1"]
 
 
 def test_missing_evidence_id_generates_deterministic_id() -> None:
@@ -633,7 +633,7 @@ def test_missing_evidence_id_generates_deterministic_id() -> None:
         [{"body": "It is expensive.", "source_url": "https://example.test/1"}],
         {"min_evidence_threshold": 1, "min_source_threshold": 1},
     )
-    assert result["top_themes"][0]["sample_evidence_ids"] == ["product_generated_0_1"]
+    assert result["top_themes"][0]["sample_evidence_ids"] == ["generated_0"]
     assert "Some evidence items were missing evidence_id values; deterministic local IDs were generated." in result["limitations"]
 
 
@@ -779,6 +779,80 @@ def test_signal_consistency_is_mixed_for_mixed_direction_group() -> None:
     ]
     conf2 = build_confidence(consistent_items, group_direction="negative")
     assert conf2["signal_consistency"] == "consistent"
+
+
+def _all_ids_are_raw(ids: list[str]) -> bool:
+    return not any(value.startswith(("product_", "decision_", "comparison_")) for value in ids)
+
+
+def test_product_aggregation_uses_original_evidence_ids() -> None:
+    result = _result_for("It is expensive and confusing.")
+    theme = _theme_map(result)[("price_value", "negative")]
+    assert theme["sample_evidence_ids"] == ["ev_1"]
+    assert _all_ids_are_raw(theme["sample_evidence_ids"])
+    assert theme["sample_extraction_ids"][0].startswith("product_ev_1_")
+
+
+def test_decision_aggregation_uses_original_evidence_ids() -> None:
+    result = _result_for("I bought it.")
+    signal = _decision_map(result)["bought"]
+    assert signal["sample_evidence_ids"] == ["ev_1"]
+    assert _all_ids_are_raw(signal["sample_evidence_ids"])
+    assert signal["sample_extraction_ids"][0].startswith("decision_ev_1_")
+
+
+def test_comparison_aggregation_uses_original_evidence_ids() -> None:
+    result = _comparison_result_for("Dyson is better than Shark.")
+    signal = next(iter(result["competitor_signals"]))
+    assert signal["sample_evidence_ids"] == ["ev_1"]
+    assert _all_ids_are_raw(signal["sample_evidence_ids"])
+    assert signal["sample_extraction_ids"][0].startswith("comparison_ev_1_")
+
+
+def test_insight_candidates_use_original_supporting_evidence_ids() -> None:
+    result = run_voc_evidence_analysis(
+        REQUIREMENT,
+        [
+            _evidence("ev_1", "It is expensive.", "https://example.test/1"),
+            _evidence("ev_2", "This is overpriced.", "https://example.test/2"),
+            _evidence("ev_3", "It is too costly.", "https://example.test/3"),
+        ],
+        {"min_evidence_threshold": 3, "min_source_threshold": 2},
+    )
+    candidates = [item for item in result["insight_candidates"] if item["finding_type"] == "product_evaluation"]
+    assert candidates
+    assert candidates[0]["supporting_evidence_ids"] == ["ev_1", "ev_2", "ev_3"]
+    assert _all_ids_are_raw(candidates[0]["supporting_evidence_ids"])
+
+
+def test_validator_rejects_internal_extraction_ids_as_evidence_ids() -> None:
+    raw = [_evidence("ev_1", "It is expensive.", "https://example.test/1")]
+    result = run_voc_evidence_analysis(REQUIREMENT, raw, {"min_evidence_threshold": 1, "min_source_threshold": 1})
+    records = _build_records(REQUIREMENT, raw, {})
+    result["top_themes"][0]["sample_evidence_ids"] = ["product_ev_1_1"]
+    assert "unknown_evidence_id: product_ev_1_1" in _validate_voc_result(result, records)
+    result["top_themes"][0]["sample_evidence_ids"] = ["ev_1"]
+    assert "unknown_evidence_id: ev_1" not in _validate_voc_result(result, records)
+
+
+def test_duplicate_extractions_dedupe_sample_evidence_ids() -> None:
+    result = run_voc_evidence_analysis(
+        REQUIREMENT,
+        [_evidence("ev_1", "It is expensive and overpriced.", "https://example.test/1")],
+        {"min_evidence_threshold": 1, "min_source_threshold": 1},
+    )
+    theme = _theme_map(result)[("price_value", "negative")]
+    assert theme["evidence_count"] >= 2
+    assert theme["sample_evidence_ids"] == ["ev_1"]
+    assert len(theme["sample_extraction_ids"]) >= 2
+
+
+def test_traceability_keeps_existing_exact_span_validation() -> None:
+    result = _result_for("The app is simple and saves time.")
+    spans = [span for theme in result["top_themes"] for span in theme["sample_spans"]]
+    assert spans
+    for span in spans:
+        assert span in "The app is simple and saves time."
 
 def main() -> None:
     tests = [
