@@ -323,9 +323,48 @@ class VOCService:
         decision_evidence: list[dict],
         sample_size: int,
     ) -> list[dict]:
-        candidates: list[dict] = []
         min_evidence = int(self.config["min_evidence_threshold"])
         min_sources = int(self.config["min_source_threshold"])
+
+        candidates = self._collect_insight_candidates(
+            product_evidence,
+            comparison_evidence,
+            decision_evidence,
+            sample_size,
+            min_evidence,
+            min_sources,
+        )
+        if candidates or sample_size < min_evidence:
+            return candidates
+
+        # The overall sample meets min_evidence_threshold, but every
+        # fine-grained group (by dimension/competitor/signal type) is too
+        # small or too narrowly sourced to clear the configured thresholds.
+        # Surface the strongest groups as preliminary, low-confidence
+        # signals instead of returning nothing.
+        fallback = self._collect_insight_candidates(
+            product_evidence,
+            comparison_evidence,
+            decision_evidence,
+            sample_size,
+            1,
+            1,
+            preliminary=True,
+        )
+        fallback.sort(key=lambda candidate: (candidate["evidence_count"], candidate["source_count"]), reverse=True)
+        return fallback[:5]
+
+    def _collect_insight_candidates(
+        self,
+        product_evidence: list[dict],
+        comparison_evidence: list[dict],
+        decision_evidence: list[dict],
+        sample_size: int,
+        min_evidence: int,
+        min_sources: int,
+        preliminary: bool = False,
+    ) -> list[dict]:
+        candidates: list[dict] = []
 
         for group in _group_items(product_evidence, ("dimension", "direction")):
             if not _meets_threshold(group["items"], min_evidence, min_sources):
@@ -335,21 +374,21 @@ class VOCService:
                 f"In this sample, {group['count']} of {sample_size} evidence items describe "
                 f"{direction} signals related to {dimension}."
             )
-            candidates.append(_make_candidate(claim, "product_evaluation", group["items"]))
+            candidates.append(_make_candidate(claim, "product_evaluation", group["items"], preliminary))
 
         for group in _group_items(comparison_evidence, ("compared_product", "comparison_basis", "preferred_option", "direction")):
             if not _meets_threshold(group["items"], min_evidence, min_sources):
                 continue
             compared_product, comparison_basis, _preferred_option, _direction = group["key"]
             claim = f"In this sample, {group['count']} of {sample_size} evidence items compare against {compared_product} on {comparison_basis}."
-            candidates.append(_make_candidate(claim, "comparison", group["items"]))
+            candidates.append(_make_candidate(claim, "comparison", group["items"], preliminary))
 
         for group in _group_items(decision_evidence, ("signal_type",)):
             if not _meets_threshold(group["items"], min_evidence, min_sources):
                 continue
             signal_type = group["key"][0]
             claim = f"In this sample, {group['count']} of {sample_size} evidence items show {signal_type} decision signals."
-            candidates.append(_make_candidate(claim, "decision", group["items"]))
+            candidates.append(_make_candidate(claim, "decision", group["items"], preliminary))
 
         return [candidate for candidate in candidates if _claim_is_safe(candidate["claim"])]
 
@@ -600,8 +639,15 @@ def _find_span(text: str, keyword: str) -> str | None:
             continue
         best_span = sentence
         for clause in _split_clauses(sentence):
-            if _contains_pattern(clause, keyword) and len(clause) < len(best_span):
-                best_span = clause
+            if not _contains_pattern(clause, keyword) or len(clause) >= len(best_span):
+                continue
+            if len(clause.split()) < 2:
+                # Skip single-word fragments like "confusing." - they are
+                # technically exact substrings but lack enough context to be
+                # useful as a quoted evidence span. Keep the larger span
+                # (a longer clause, or the full sentence) instead.
+                continue
+            best_span = clause
         return best_span
     return None
 
@@ -665,8 +711,22 @@ def _span_has_target_and_competitor(span: str, target_product: str, competitor_t
 def _detect_compared_product(span: str, competitor_terms: list[str]) -> str:
     for term in competitor_terms:
         if _contains_pattern(span, term):
-            return term
+            return _singularize_competitor_term(term)
     return "unknown"
+
+
+def _singularize_competitor_term(term: str) -> str:
+    """Collapse simple plural aliases (e.g. "spreadsheets") to their singular form
+
+    so that plural/singular variants of the same competitor term (as produced by
+    voc_integration's alias expansion) aggregate into a single competitor_signals
+    group instead of two.
+    """
+    stripped = term.strip()
+    lowered = stripped.casefold()
+    if len(lowered) > 2 and lowered.endswith("s") and not lowered.endswith("ss"):
+        return stripped[:-1]
+    return stripped
 
 
 def _comparison_basis(span: str) -> str:
@@ -973,7 +1033,17 @@ def _validate_non_negative_int(value: Any, issue: str, issues: list[str]) -> Non
         issues.append(issue)
 
 
-def _make_candidate(claim: str, category: str, items: list[dict]) -> dict:
+def _make_candidate(claim: str, category: str, items: list[dict], preliminary: bool = False) -> dict:
+    extra_limitations = None
+    if preliminary:
+        claim = (
+            f"{claim} This is a preliminary signal based on a small sample below the "
+            f"configured min_evidence_threshold/min_source_threshold."
+        )
+        extra_limitations = [
+            "This insight candidate is below the configured min_evidence_threshold/min_source_threshold "
+            "and should be treated as preliminary.",
+        ]
     return {
         "claim": claim,
         "finding_type": category,
@@ -981,7 +1051,8 @@ def _make_candidate(claim: str, category: str, items: list[dict]) -> dict:
         "source_count": _source_count(items),
         "supporting_evidence_ids": _evidence_ids(items),
         "confidence": build_confidence(items),
-        "limitations": _limitations(),
+        "limitations": _limitations(extra_limitations),
+        "preliminary": preliminary,
     }
 
 

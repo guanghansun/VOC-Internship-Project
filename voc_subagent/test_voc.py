@@ -121,6 +121,26 @@ def test_min_evidence_met_can_be_true_without_insights() -> None:
     assert result["insight_candidates"] == []
 
 
+def test_fallback_preliminary_insight_candidates_when_groups_are_too_small() -> None:
+    raw = [
+        _evidence("ev_1", "It is expensive.", "https://example.test/1"),
+        _evidence("ev_2", "The setup is frustrating.", "https://example.test/2"),
+        _evidence("ev_3", "It is fast and accurate.", "https://example.test/3"),
+    ]
+    result = run_voc_evidence_analysis(REQUIREMENT, raw)
+    assert result["min_evidence_met"] is True
+    candidates = result["insight_candidates"]
+    assert len(candidates) == 3
+    assert all(candidate["preliminary"] is True for candidate in candidates)
+    assert all(candidate["source_count"] == 1 for candidate in candidates)
+    assert all(candidate["claim"].startswith("In this sample") for candidate in candidates)
+    assert all("preliminary signal" in candidate["claim"] for candidate in candidates)
+    assert all(
+        "preliminary" in " ".join(candidate["limitations"]).lower()
+        for candidate in candidates
+    )
+
+
 def test_min_evidence_met_false_for_one_or_two_records() -> None:
     one = run_voc_evidence_analysis(REQUIREMENT, [_evidence("ev_1", "It is expensive.", "https://example.test/1")])
     two = run_voc_evidence_analysis(
@@ -189,6 +209,16 @@ def test_multiple_dimensions_from_one_evidence_item() -> None:
     assert ("price_value", "negative") in themes
     assert ("usability", "positive") in themes
     assert ("performance", "positive") in themes
+
+
+def test_span_avoids_single_word_fragments() -> None:
+    result = _result_for("The spreadsheet workflow is too manual and confusing.")
+    themes = _theme_map(result)
+    spans = themes[("usability", "negative")]["sample_spans"]
+    assert spans
+    for span in spans:
+        assert len(span.split()) >= 2
+        assert span != "confusing."
 
 
 def test_no_duplicate_evidence_objects_for_same_key() -> None:
@@ -323,6 +353,28 @@ def test_competitor_terms_and_unknown_competitor_are_conservative() -> None:
     assert any(item["compared_product"] == "Revlon" for item in configured["competitor_signals"])
     assert any(item["compared_product"] == "unknown" for item in unknown["competitor_signals"])
     assert any(item["preferred_option"] == "unclear" and item["direction"] == "neutral_or_mixed" for item in unclear["competitor_signals"])
+
+
+def test_plural_and_singular_competitor_terms_aggregate_together() -> None:
+    config = {
+        "target_product": "this app",
+        "competitor_terms": ["spreadsheet", "spreadsheets"],
+        "min_evidence_threshold": 1,
+        "min_source_threshold": 1,
+    }
+    result = run_voc_evidence_analysis(
+        REQUIREMENT,
+        [
+            _evidence("ev_1", "Compared to a spreadsheet, this app is faster.", "https://example.test/1"),
+            _evidence("ev_2", "Compared to spreadsheets, this app is faster.", "https://example.test/2"),
+        ],
+        config,
+    )
+    assert not any(item["compared_product"] == "spreadsheets" for item in result["competitor_signals"])
+    spreadsheet_signals = [item for item in result["competitor_signals"] if item["compared_product"] == "spreadsheet"]
+    assert len(spreadsheet_signals) == 1
+    assert spreadsheet_signals[0]["evidence_count"] == 2
+    assert set(spreadsheet_signals[0]["sample_evidence_ids"]) == {"ev_1", "ev_2"}
 
 
 def test_comparison_spans_are_exact_substrings_and_deduped() -> None:
