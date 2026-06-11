@@ -1,0 +1,5 @@
+# Force LF line endings for all text files in this repo, regardless of the
+# platform or local core.autocrlf setting. This prevents Windows checkouts
+# (core.autocrlf=true) from converting tracked files to CRLF on
+# checkout/pull/rebase, which previously polluted commits and the working tree.
+* text=auto eol=lf
